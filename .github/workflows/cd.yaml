@@ -1,0 +1,84 @@
+name: CD Pipeline - Intranet NewDeal Production
+
+on:
+  push:
+    branches:
+      - prod
+
+env:
+  IMAGE_NAME: intranet-newdeal
+  IMAGE_TAG: 1.0.0
+  DOCKER_REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+
+  # ===============================
+  # JOB 1 - SCAN SÉCURITÉ
+  # ===============================
+  security-scan:
+    name: Scan Sécurité Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code source
+        uses: actions/checkout@v4
+
+      - name: Connexion à Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+          docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Pull de l'image depuis Docker Hub
+        run: |
+          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Scan des vulnérabilités avec Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
+
+      - name: Scan des secrets avec Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ===============================
+  # JOB 2 - DÉPLOIEMENT PRODUCTION
+  # ===============================
+  deploy:
+    name: Déploiement Production
+    runs-on: runner_prod
+    needs: security-scan
+
+    steps:
+      - name: Connexion à Docker Hub
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+          docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Pull de la dernière image
+        run: |
+          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Arrêter le conteneur existant
+        run: |
+          docker stop intranet-prod || true
+
+      - name: Supprimer l'ancien conteneur
+        run: |
+          docker rm intranet-prod || true
+
+      - name: Démarrer le nouveau conteneur
+        run: |
+          docker run -d \
+            --name intranet-prod \
+            --restart always \
+            -p 80:80 \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      - name: Vérifier que le conteneur tourne
+        run: |
+          docker ps | grep intranet-prod
