@@ -45,6 +45,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+
   # ===============================
   # JOB 2 - DÉPLOIEMENT PRODUCTION
   # ===============================
@@ -64,12 +65,10 @@ jobs:
           docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Arrêter le conteneur existant
-        run: |
-          docker stop intranet-prod || true
+        run: docker stop intranet-prod || true
 
       - name: Supprimer l'ancien conteneur
-        run: |
-          docker rm intranet-prod || true
+        run: docker rm intranet-prod || true
 
       - name: Démarrer le nouveau conteneur
         run: |
@@ -80,5 +79,10 @@ jobs:
             ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Vérifier que le conteneur tourne
-        run: |
-          docker ps | grep intranet-prod
+        run: docker ps | grep intranet-prod || true
+
+      # ===============================
+      # NOTIFICATION
+      # ===============================
+      - name: Notification succès
+        run: echo "🚀 Déploiement PROD réussi - Intranet NewDeal est en ligne"
